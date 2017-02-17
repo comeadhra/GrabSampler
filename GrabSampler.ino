@@ -39,31 +39,16 @@ void send(char *str)
 
   Serial1.print(str);
   // Copy string to debugging console.
-  Serial.print("-> ");
-  Serial.print(str);
+  //Serial.print("-> ");
+  //Serial.print(str);
 }
 
-/**
- * Returns a JSON error message to the connected USB device and the
- * serial debugging console.
- */
-void reportError(const char *error_message, const char *buffer)
-{
-  // Construct a JSON error message.
-  snprintf(output_buffer, OUTPUT_BUFFER_SIZE, 
-           "{"
-           "\"error\": \"%s\","
-           "\"args\": \"%s\""
-           "}",
-           error_message, buffer);
-  send(output_buffer);
-}
 
 /**
  * Handler to respond to incoming JSON commands and dispatch them to
  * configurable hardware components.
  */
-void handleCommand(char *buffer)
+int handleCommand(char *buffer)
 {
   char cbuff[5];
   cbuff[4] = '\0';
@@ -73,20 +58,23 @@ void handleCommand(char *buffer)
     sampler_index = cbuff[1] - '0';
 
     if (sampler_index >= 4){
-      reportError("Invalid sensor index.", cbuff);
-      return;
+      //reportError("Invalid sensor index.", cbuff);
+      return -1;
     }
   }else{
-    reportError("Unknown command target.", cbuff);
-    return;
+    //reportError("Unknown command target.", cbuff);
+    return -1;
   }
 
   const char param_name = cbuff[2];
   const char param_value = cbuff[3];
 
   if (!set(param_name, param_value)) {
-    reportError("Invalid parameter set.", buffer);
+    //reportError("Invalid parameter set.", buffer);
+    return -1;
   }
+
+  return 0;
 
 }
 
@@ -95,10 +83,10 @@ void setup()
   delay(1000);
 
   //Initialize tx/rx pins
-   Serial1.begin(115200);
+   Serial1.begin(9600);
   
   // Initialize debugging serial console.
-  Serial.begin(115200);
+  //Serial.begin(115200);
 
 
   input_buffer[INPUT_BUFFER_SIZE] = '\0';
@@ -119,10 +107,11 @@ void loop()
   static size_t input_buffer_idx = 0;
   
   // Wait until characters are received.
-  while (!Serial.available()) yield();
-
+  while (!Serial1.available()) yield();
+  
   // Put the new character into the buffer, ignore \n and \r
-  char c = Serial.read();
+  char c = Serial1.read();
+ 
   if (c != '\n' && c != '\r'){
     input_buffer[input_buffer_idx++] = c;
   }
@@ -135,9 +124,10 @@ void loop()
     input_buffer_idx = 0;
     
     // Attempt to parse command.
-    handleCommand(input_buffer);
+    //Serial.println(String("Received ") + input_buffer);
+    if(handleCommand(input_buffer) < 0)
+      return;
   
-
     //Wait for first command to be received
     if(sampler_index < 0)
       return;
@@ -176,7 +166,7 @@ bool set(const char param, const char value)
   if (param == 'e')
   { 
     int pump_num = value - '0';
-    Serial.println(String("In set # ") + String(pump_num) + "run time is " + String(prev_run_time[pump_num]) + "prt = " + String(run_time_exceeded[pump_num] ? "true" : "false"));
+    
     if(active[pump_num] || run_time_exceeded[pump_num])
       return true;
     active[pump_num] = true;
@@ -205,7 +195,6 @@ bool set(const char param, const char value)
 
 void enable(int pump_num)
 {   
-  Serial.println(String("Enabling pump ") + String(pump_num));
   switch(pump_num)
   {
     case 0: case 1:
@@ -227,7 +216,6 @@ void disable(int pump_num)
   digitalWrite(pump_num < 2 ? pwm1 : pwm2, LOW);
   //Record the run time for the current pump
   prev_run_time[pump_num] = millis() - start_time[pump_num];
-  Serial.println(String("Disabling ") + String(pump_num) + "run time is " + String(prev_run_time[pump_num]));
 }
 
 
