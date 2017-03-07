@@ -22,6 +22,8 @@ bool active[4];
 long start_time[4];
 long prev_run_time[4];
 
+bool first_command_recvd = false;
+
 long max_run_time = 100000;
 
 /**
@@ -50,28 +52,16 @@ void send(char *str)
  */
 int handleCommand(char *buffer)
 {
-  char cbuff[5];
-  cbuff[4] = '\0';
-  sscanf(buffer, "{\"%c%c\":{\"%c\":%c}}",cbuff, cbuff+1, cbuff+2, cbuff+3);
-  if( cbuff[0] == 's'){
-   
-    sampler_index = cbuff[1] - '0';
-
-    if (sampler_index >= 4){
-      //reportError("Invalid sensor index.", cbuff);
-      return -1;
-    }
-  }else{
-    //reportError("Unknown command target.", cbuff);
-    return -1;
-  }
-
-  const char param_name = cbuff[2];
-  const char param_value = cbuff[3];
+  char param_name, param_value;
+  sscanf(buffer, "{\"%c\":%c}", &param_name, &param_value);
 
   if (!set(param_name, param_value)) {
     //reportError("Invalid parameter set.", buffer);
     return -1;
+  }
+  else if(!first_command_recvd)
+  {
+    first_command_recvd = true;
   }
 
   return 0;
@@ -129,7 +119,7 @@ void loop()
       return;
   
     //Wait for first command to be received
-    if(sampler_index < 0)
+    if(!first_command_recvd)
       return;
     //byte for update message
     byte sampler_status = 0;
@@ -148,11 +138,8 @@ void loop()
     char output_str[128];
     snprintf(output_str, 128,
              "{"
-             "\"s%d\":{"
              "\"s\":\"%d\""
-             "}"
              "}",
-             sampler_index, 
              sampler_status
             );
     send(output_str);  
@@ -184,6 +171,24 @@ bool set(const char param, const char value)
   }
   else if (param == 'q')
   {
+    return true;
+  }
+  //Reset pump
+  else if (param == 'r')
+  {
+    for(int i = 0; i < 4; i++)
+    {
+      disable(i);
+      active[i] = false;
+      prev_run_time[i] = 0;
+    }
+    return true;
+  }
+  //Set timeout
+  else if (param == 't')
+  {
+    //Timeout setting is in 10's of seconds
+    max_run_time = (int)value*10000;
     return true;
   }
   // Return false for unknown command.
